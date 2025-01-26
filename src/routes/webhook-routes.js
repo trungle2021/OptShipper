@@ -1,5 +1,8 @@
 const express = require('express');
 const router = express.Router();
+const { sendMessage } = require('../controller/webhook');
+
+router.post('/send-message', sendMessage);
 
 // Xử lý POST request đến /webhook
 router.post('/', async (req, res) => {
@@ -33,6 +36,7 @@ router.post('/', async (req, res) => {
         });
     }
 });
+
 
 router.get('/', (req, res) => {
     res.send('Hello World');
