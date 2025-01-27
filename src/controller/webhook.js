@@ -1,11 +1,11 @@
 const analyzeMessage = require('../services/message/analyze-message')
-const createOrder = require('../services/order-service')
+const orderService = require('../services/order-service')
 
 const sendMessage = async (req, res) => {
     const { message } = req.body;
     const order = await analyzeMessage(message);
-    // const 
-    // const response = await createOrder(order);
+    const response = await orderService.createOrder(order);
+    console.log("response", response);
     console.log(order);
     res.status(200).json({ order });
 };
