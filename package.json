@@ -9,6 +9,7 @@
     "express": "^4.21.2",
     "helmet": "^8.0.0",
     "morgan": "^1.10.0",
+    "openai": "^4.80.1",
     "path": "^0.12.7",
     "rotating-file-stream": "^3.2.5",
     "winston": "^3.17.0"
