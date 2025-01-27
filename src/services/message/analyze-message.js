@@ -1,4 +1,4 @@
-const {openai, modelName} = require('../../models/openai')
+const {openai, modelName} = require('../../models/ai-models/openai')
 
 const analyzeMessage = async (message) => {
     try {

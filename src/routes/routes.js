@@ -1,6 +1,6 @@
 const express = require('express');
 const apiRoutes = express();
-const webhookRoute = require('./webhook-routes');
+const webhookRoute = require('./webhook-router');
 
 apiRoutes.use('/webhook', webhookRoute);
 

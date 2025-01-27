@@ -2,7 +2,7 @@ const { google } = require('googleapis')
 const API_VERSION = process.env.GOOGLE_SHEET_API_VERSION
 const getGoogleSheetCredentials = require('./googlesheet-credentials')
 const getGoogleSheetAuthClientByCredentials = require('./googlesheet-auth-client')
-const logger = require('../../../utils/logging/logger')
+const logger = require('../../utils/logging/winston')
 
 const googleSheetAPIConfig = async () => {
   const credentials = getGoogleSheetCredentials()
