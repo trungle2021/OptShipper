@@ -1,33 +1,52 @@
 const {openai, modelName} = require('../../config/ai-models/openai')
+const COMMANDS = require('../../utils/commands')
+const redis = require('../../utils/redis/redis')
+const mapService = require('../map/map-service')
+const webhookService = require('../webhook/webhook-service')
+const ORDER_SESSION_KEY = process.env.ORDER_SESSION_KEY;
+
 
 const analyzeMessage = async (message) => {
     try {
         const systemPrompt = 
         `You are an order processing assistant that extracts order information from Vietnamese messages.
-        Please analyze the input message and extract the following information:
-        - customer_name: Extract from context or mark as "Unknown" if not found
-        - shipping_fee: Extract shipping/delivery fee (the shipping fee usually a number has the word "k" at the end, if not found, mark as null)
-        - order_details: Extract order details
-        - total_amount: Extract total amount (number only, the total amount usually a number has the word "k" at the end, if not found, mark as null)
-        - delivery_address: Extract full address
-        - phone_number: Extract phone number
-        - payment_method: Identify if it's COD (cash on delivery) or Ck
-        - note: Extract any special notes about delivery time or other requirements
+            Example order formats:
+            1. "Đơn hàng của chị
+            2 sợi cay vừa 500gr 1020k
+            Ship 25k
+            Tổng 1045k
+            Địa chỉ: Homyland 3 Nguyễn Duy Trinh - Quận 2
+            Sđt: +84383234234
+            Đã Ck"
 
-        Return the data in valid JSON format with these exact field names. 
-        Numbers should be returned as numbers, not strings.
-    If any field is not found, use null as the value.`
-    const userPrompt = message
-    const response = await openai.chat.completions.create({
-        model: modelName,
-        messages: [
-            {role: 'system', content: systemPrompt},
-            {role: 'user', content: userPrompt}
-        ],
-        temperature: 0.7,
-        response_format: { type: "json_object" }
-    })
-    return JSON.parse(response.choices[0].message.content)
+            2. "Thông tin giao hàng:
+            Trần Thuỵ Ngọc Huyền
+            SĐT: 0868411097
+            ĐC: Cổng A Nhà điều hành Đại học Quốc gia TP.HCM, đường Võ Trường Toản, KP6, Phường Linh Trung, Thủ Đức, HCM"
+
+            Extract the following information (return null if not found):
+            - customer_name: Name from context
+            - shipping_fee: Delivery fee (number with 'k' suffix)
+            - order_details: Items ordered
+            - total_amount: Total price (number with 'k' suffix)
+            - delivery_address: Complete address
+            - phone_number: Contact number
+            - payment_method: 'COD' or 'Ck'
+            - note: Special delivery instructions
+
+            Return valid JSON with exact field names. Use numbers for amounts, not strings.
+            Return "Incorrect order format, please try again or type /syntax to see more" for english user and "Sai định dạng thông tin đơn hàng, vui lòng thử lại hoặc nhập /syntax để xem lại cú pháp" for vietnamese user if input is not order-related.`
+        const userPrompt = message
+        const response = await openai.chat.completions.create({
+            model: modelName,
+            messages: [
+                {role: 'system', content: systemPrompt},
+                {role: 'user', content: userPrompt}
+            ],
+            temperature: 0.7,
+            response_format: { type: "json_object" }
+        })
+        return JSON.parse(response.choices[0].message.content)
     } catch (error) {
         console.error('Error analyzing message:', error)
         throw error
@@ -69,13 +88,59 @@ const handleNormalMessage = async (message_content) => {
     }
 }
 
-const handleCommandMessage = async (message_content) => {
+const handleCommandMessage = async (message_content, sender_psid) => {
     switch (message_content){
         case COMMANDS.START: 
-        case COMMANDS.GO: 
-        case COMMANDS.HELP: 
+            return startOrderSession(sender_psid);
+        case COMMANDS.END: 
+            return finishOrderSession(sender_psid);
         case COMMANDS.ABOUT: 
+            return handleShowAbout();
     }
 }
 
-module.exports = {analyzeMessage, handleNormalMessage, handleCommandMessage}
+const startOrderSession = async (sender_psid) => {
+    try{
+        const sessionKey = ORDER_SESSION_KEY.replace("SENDER_PSID", sender_psid);
+        const orderList = []
+ 
+        const existingOrderSession = await redis.get(sessionKey);
+        
+        if (existingOrderSession){
+            return "Order session already opened. You can now send your orders. Type /end when finished."
+        }
+        // init new session with empty array
+        await redis.set(sessionKey, JSON.stringify(orderList));
+        
+        return "Started new order session. You can now send your orders. Type /end when finished.";
+
+    }catch(error){
+        console.error("Error starting new order session", error)
+        throw error;
+    }
+}
+
+const finishOrderSession = async (sender_psid) => {
+    const sessionKey = ORDER_SESSION_KEY.replace("SENDER_PSID", sender_psid);
+
+    const existingOrderSession = await redis.get(sessionKey);
+    if (existingOrderSession){
+        const orders = JSON.parse(existingOrderSession);
+
+        webhookService.callSendAPI(sender_psid, {
+            "text": `Order session completed. Processing ${orders.length} orders.`
+        })
+
+        return await mapService.handleGenerateMapLink(orders);
+    }else{
+        return "No order session is opening. Try /start to open session"
+    }
+}
+
+module.exports = {
+    analyzeMessage,
+    startOrderSession,
+    finishOrderSession,
+    handleNormalMessage, 
+    handleCommandMessage,
+}

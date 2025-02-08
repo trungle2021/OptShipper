@@ -1,6 +1,6 @@
 const COMMANDS = {
     START: '/start',
-    GO: '/go',
+    END: '/end',
     HELP: '/help',
     ABOUT: '/about',
 }

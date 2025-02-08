@@ -26,4 +26,14 @@ const handleMessage = async (sender_psid, received_message) => {
     webhookService.callSendAPI(sender_psid, response);  
 }
 
-module.exports = { handleMessage }
+const handleOrderMessage = async (sender_psid, received_message) => {
+    let response;
+    const message_content = received_message.text.trim();
+    response = {
+        "text": await messageService.analyzeMessage(message_content)
+    };
+
+    webhookService.callSendAPI(sender_psid, response);  
+}
+
+module.exports = { handleMessage, handleOrderMessage}
