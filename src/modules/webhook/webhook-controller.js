@@ -26,13 +26,7 @@ const handleWebhookEvent = async (req, res) => {
               // Check if the event is a message or postback and
               // pass the event to the appropriate handler function
               if (webhook_event.message) {
-                  const sessionKey = ORDER_SESSION_KEY.replace("SENDER_PSID", sender_psid);
-                  const isOrderSessionOpening = await redis.get(sessionKey);
-                  if (isOrderSessionOpening){
-                    messageController.handleOrderMessage(sender_psid, webhook_event.message);
-                  }else{
                     messageController.handleMessage(sender_psid, webhook_event.message);
-                  }
               } else if (webhook_event.postback) {
                   postBackController.handlePostback(sender_psid, webhook_event.postback);
               }
@@ -43,8 +37,6 @@ const handleWebhookEvent = async (req, res) => {
           res.sendStatus(404);
       }
 }
-
-
 
 module.exports = {
     handleWebhookEvent
