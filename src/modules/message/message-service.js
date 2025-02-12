@@ -1,96 +1,80 @@
-const {openai, modelName} = require('../../config/ai-models/openai')
+const { openai, modelName } = require('../../config/ai-models/openai')
 const COMMANDS = require('../../utils/commands')
 const redis = require('../../utils/redis/redis')
 const mapService = require('../map/map-service')
 const webhookService = require('../webhook/webhook-service')
 const ORDER_SESSION_KEY = process.env.ORDER_SESSION_KEY;
+const USER_STATE_KEY = process.env.USER_STATE_KEY;
 
-const handleNormalMessage = async (message_content) => {
+const handleNormalMessage = async (message_content, sender_psid) => {
     try {
-        const systemPrompt = 
-        `You are an Order Processing Assistant AI Chatbot. Your primary role is to assist users with managing and optimizing their order processing tasks. Follow these guidelines to interact effectively:
-        1. Route Optimization Requests:
-            If a user inquires about optimizing routes between orders, provide them with the following commands:
-                -/start: Inform the user that this command starts a new order session.
-                -/go: Explain that this command ends the current session and provides a link to optimized routes.
-                -/about: Offer an introduction to the chatbot and its functionalities.
-                -/sender-psid: Get the Page-Scoped ID (PSID) of the current user.
-                -/cancel: Delete/close the current active order session.
-                -/view: Display all orders for the current session.
-                -/clear: Remove all orders in the current session.
-                -/remove ORDERID: Remove a specific order using its unique order ID 
-        2. General Inquiries:
-            Respond to any simple questions from users with clear and concise answers.
-            Maintain a friendly and helpful tone in all interactions.
-        3. User Engagement:
-            Encourage users to utilize the commands for efficient order processing.
-            Be proactive in offering assistance and clarifying any doubts the user may have.
-            Your goal is to ensure users have a smooth and efficient experience while interacting with the chatbot. Always prioritize clarity and helpfulness in your responses.
-        
-        Additionally, you are an order processing assistant that extracts order information from Vietnamese messages.
-        Example order formats:
-        1. "Đơn hàng của chị
-        2 sợi cay vừa 500gr 1020k
-        Ship 25k
-        Tổng 1045k
-        Địa chỉ: Homyland 3 Nguyễn Duy Trinh - Quận 2
-        Sđt: +84383234234
-        Đã Ck"
+        const systemPrompt =
+            `You are an Order Processing Assistant AI Chatbot. Your primary role is to assist users with managing and optimizing their order processing tasks. Follow these guidelines to interact effectively:
+### 1. *Route Optimization Requests*  
+   If a user inquires about optimizing routes between orders, provide them with the following commands:  
+   - */start*: Mở một session mới.  
+   - */go*: Kết thúc session và trả về link google map.
+   - */syntax*: Hiển thị tất cả các lệnh cú pháp.  
+   - */about*: Giới thiệu về chatbot.  
+   - */sender-psid*: Lấy Page-Scoped ID (PSID) của user hiện tại.  
+   - */cancel*: Xóa session hiện tại.  
+   - */view*: Hiển thị tất cả đơn hàng trong session hiện tại.  
+   - */clear*: Xóa tất cả đơn hàng trong session hiện tại.  
+   - */remove ORDERID*: Xóa đơn hàng theo ORDERID.  
 
-        2. "Thông tin giao hàng:
-        Trần Thuỵ Ngọc Huyền
-        SĐT: 0868411097
-        ĐC: Cổng A Nhà điều hành Đại học Quốc gia TP.HCM, đường Võ Trường Toản, KP6, Phường Linh Trung, Thủ Đức, HCM"
+### 2. *General Inquiries*  
+   If the user sends a general message *without order-related keywords*, respond naturally in JSON format. The response should be relevant to the user's question.
+ Return JSON format:  
+  {
+    "success": boolean,
+    "message": string
+  }
+### 3. *Order Extraction (Only If Message Contains Order Keywords)*  
+   If the message includes order-related keywords like "đơn hàng", "ship", "tổng", "địa chỉ", "SĐT", etc., extract the following information (return "null" if not found):
 
-        Extract the following information (return null if not found):
-        - customer_name: Name from context
-        - shipping_fee: Delivery fee (number with 'k' suffix)
-        - order_details: Items ordered
-        - total_amount: Total price (number with 'k' suffix)
-        - delivery_address: Complete address
-        - phone_number: Contact number
-        - payment_method: 'COD' or 'Ck'
-        - note: Special delivery instructions
+   - "customer_name": Name from context  
+   - "shipping_fee": Delivery fee (number with 'k' suffix)  
+   - "order_details": Items ordered  
+   - "total_amount": Total price (number with 'k' suffix)  
+   - "delivery_address": Complete address  
+   - "phone_number": Contact number  
+   - "payment_method": 'COD' or 'Ck'  
+   - "note": Special delivery instructions  
 
-        Return valid JSON with exact field names. Use numbers for amounts, not strings.
-        {
-            "success": true,
-            "is_order_valid": true,
-            "message": {
-                "customer_name": string | null,
-                "shipping_fee": number | null,
-                "order_details": string | null,
-                "total_amount": number | null,
-                "delivery_address": string | null,
-                "phone_number": string | null,
-                "payment_method": string | null,
-                "note": string | null
-            },
-        }
-        For invalid orders, return:
-        {
-            "success": false,
-            "message": "Sai định dạng thông tin đơn hàng, vui lòng thử lại hoặc nhập /syntax để xem lại cú pháp"
-        }`
+   *Return JSON format:*  
+   {
+       "success": true,
+       "is_order_valid": true,
+       "message": {
+           "customer_name": "Trần Thuỵ Ngọc Huyền",
+           "shipping_fee": 25,
+           "order_details": "2 sợi cay vừa 500gr",
+           "total_amount": 1045,
+           "delivery_address": "Cổng A Nhà điều hành Đại học Quốc gia TP.HCM, đường Võ Trường Toản, KP6, Phường Linh Trung, Thủ Đức, HCM",
+           "phone_number": "0868411097",
+           "payment_method": "Ck",
+           "note": null
+       }
+   }`;
+
 
         const userPrompt = message_content
         const response = await openai.chat.completions.create({
             model: modelName,
             messages: [
-                {role: 'system', content: systemPrompt},
-                {role: 'user', content: userPrompt}
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: userPrompt }
             ],
             temperature: 0.7,
             response_format: { type: "json_object" }
         })
-        const jsonResponse = JSON.parse(response.choices[0].message.content).message;
+        const jsonResponse = JSON.parse(response.choices[0].message.content);
 
-        if (jsonResponse['success'] && jsonResponse['is_order_valid']){
-           return handleOrderMessage(jsonResponse['message'], sender_psid);
-        } 
+        if (jsonResponse['success'] && jsonResponse['is_order_valid']) {
+            return handleOrderMessage(sender_psid, jsonResponse.message);
+        }
 
-
-        return jsonResponse;
+        return jsonResponse.message;
     } catch (error) {
         console.error('Error analyzing message:', error)
         throw error
@@ -98,79 +82,93 @@ const handleNormalMessage = async (message_content) => {
 }
 
 const handleCommandMessage = async (message_content, sender_psid) => {
-    switch (message_content){
-        case COMMANDS.START: 
+    switch (message_content) {
+        case COMMANDS.START:
             return startOrderSession(sender_psid);
-        case COMMANDS.END: 
+        case COMMANDS.END:
             return finishOrderSession(sender_psid);
-        case COMMANDS.HELP: 
-            return handleHelpCommand();
-        case COMMANDS.ABOUT: 
+        case COMMANDS.SYNTAX:
+            return handleSyntaxCommand();
+        case COMMANDS.ABOUT:
             return handleShowAbout();
-        case COMMANDS.CANCEL: 
-            return handleCancelCurrentOrderSession();
-        case COMMANDS.RETRIEVE_ALL_ORDER: 
+        case COMMANDS.CANCEL:
+            return handleCancelCurrentOrderSession(sender_psid);
+        case COMMANDS.RETRIEVE_ALL_ORDER:
             return getAllCurrentOrder(sender_psid);
-        case COMMANDS.CLEAR_ALL_ORDER: 
+        case COMMANDS.CLEAR_ALL_ORDER:
             return clearAllOrderInCurrentSession(sender_psid);
-        case COMMANDS.REMOVE_ORDER_BY_ORDERID: 
+        case COMMANDS.REMOVE_ORDER_BY_ORDERID:
             return removeOrderByOrderID(sender_psid);
         case COMMANDS.GET_SENDER_PSID:
             return `${sender_psid}`;
-        default: 
+        default:
             return 'Incorrect syntax';
     }
 }
 
-const handleOrderMessage = async (sender_psid, received_message, sessionKey) => {
+const handleOrderMessage = async (sender_psid, received_message) => {
     try {
         let response;
+        const sessionKey = ORDER_SESSION_KEY.replace("SENDER_PSID", sender_psid);
         // Get orders array from parent function
         let orders = JSON.parse(await redis.get(sessionKey)) || [];
-        const order = received_message
-        
-        if (!order.success){
-            response = {
-                "text": order.message
-            };
-            webhookService.callSendAPI(sender_psid, response);
-            return;
+        const { lat, lng } = await mapService.getLatLngFromAddress(received_message.delivery_address);
+        const order = {
+            address: received_message.delivery_address,
+            lat,
+            lng
         }
+
         orders.push(order);
-        
+
         // Save to Redis
         await redis.set(sessionKey, JSON.stringify(orders));
-        
+
         response = {
-            "text": `Order inserted successfully. Total orders: ${orders.length}`
+            "text": `Thêm đơn hàng thành công. Tổng cộng: ${orders.length} đơn hàng.`
         };
 
         webhookService.callSendAPI(sender_psid, response);
     } catch (error) {
         console.error('Error handling order message:', error);
         const errorResponse = {
-            "text": "Sorry, there was an error processing your order. Please try again."
+            "text": "Có lỗi trong quá trình xử lý, vui lòng thử lại."
         };
         webhookService.callSendAPI(sender_psid, errorResponse);
     }
 }
 
 const startOrderSession = async (sender_psid) => {
-    try{
+    try {
         const sessionKey = ORDER_SESSION_KEY.replace("SENDER_PSID", sender_psid);
         const orderList = []
- 
+
         const existingOrderSession = await redis.get(sessionKey);
-        
-        if (existingOrderSession){
-            return "Order session already opened. You can now send your orders. Type /end when finished."
+
+        if (existingOrderSession) {
+            return "Session đã tồn tại. Bạn có thể gửi thông tin đơn hàng. Gõ /end khi hoàn tất."
         }
         // init new session with empty array
         await redis.set(sessionKey, JSON.stringify(orderList));
-        
-        return "Started new order session. You can now send your orders. Type /end when finished.";
 
-    }catch(error){
+        const postBackArray = [
+            {
+                "type": "postback",
+                "title": "Nhập địa chỉ khởi hành",
+                "payload": "INSERT_START_ADDRESS"
+            },
+            {
+                "type": "postback",
+                "title": "Dùng vị trí hiện tại",
+                "payload": "RETRIEVE_CURRENT_LOCATION"
+            }
+        ]
+        await webhookService.sendPostbackMessage(sender_psid, "Choose your location", postBackArray);
+
+
+        return "Bắt đầu session giao hàng. Bạn có thể gửi thông tin đơn hàng. Gõ /end khi hoàn tất.";
+
+    } catch (error) {
         console.error("Error starting new order session", error)
         throw error;
     }
@@ -180,42 +178,80 @@ const finishOrderSession = async (sender_psid) => {
     const sessionKey = ORDER_SESSION_KEY.replace("SENDER_PSID", sender_psid);
 
     const existingOrderSession = await redis.get(sessionKey);
-    if (existingOrderSession){
+    if (existingOrderSession) {
         const orders = JSON.parse(existingOrderSession);
 
         webhookService.callSendAPI(sender_psid, {
-            "text": `Order session completed. Processing ${orders.length} orders.`
+            "text": `Hoàn thành session giao hàng. Đang tối ưu lộ trình cho ${orders.length} đơn hàng.`
         })
 
-        return await mapService.handleGenerateMapLink(orders);
-    }else{
-        return "No order session is opening. Try /start to open session"
+        // const mapLink = await mapService.generateMapLink(orders);
+        let mapLink = "https://www.google.com/maps";
+
+        return "Sau đây là lộ trình tối ưu cho đơn hàng của bạn: " + mapLink;
+    } else {
+        return "Hiện tại đang không có session nào. Thử /start để mở session mới."
     }
 }
 
-const handleHelpCommand = async () => {
-
+const handleSyntaxCommand = async () => {
+    return `
+   - */start*: Mở một session mới.  
+   - */go*: Kết thúc session và trả về link google map.
+   - */syntax*: Hiển thị tất cả các lệnh cú pháp.  
+   - */about*: Giới thiệu về chatbot.  
+   - */sender-psid*: Lấy Page-Scoped ID (PSID) của user hiện tại.  
+   - */cancel*: Xóa session hiện tại.  
+   - */view*: Hiển thị tất cả đơn hàng trong session hiện tại.  
+   - */clear*: Xóa tất cả đơn hàng trong session hiện tại.  
+   - */remove ORDERID*: Xóa đơn hàng theo ORDERID.  
+    `
 }
 
-const handleCancelCurrentOrderSession = async (sessionKey) => {
+const handleCancelCurrentOrderSession = async (sender_psid) => {
     try {
+        if (!sender_psid) {
+            return "Missing sender PSID";
+        }
+        const sessionKey = ORDER_SESSION_KEY.replace("SENDER_PSID", sender_psid);
+        const existingOrderSession = await redis.get(sessionKey);
+
+        if (!existingOrderSession) {
+            return "Hiện tại không có session nào. Thử /start để tạo session mới.";
+        }
+
         await redis.del(sessionKey);
-        return "Order session cancelled successfully.";
+        return "Xóa session thành công.";
     } catch (error) {
         console.error("Error cancelling order session:", error);
         throw error;
     }
 }
-const getAllCurrentOrder = async (sessionKey) => {
+
+const getAllCurrentOrder = async (sender_psid) => {
     try {
-        let orders = JSON.parse(await redis.get(sessionKey)) || [];
-        if (orders.length === 0) {
-            return "No order in current session";
+        if (!sender_psid) {
+            return "Missing sender PSID";
+        }
+        const sessionKey = ORDER_SESSION_KEY.replace("SENDER_PSID", sender_psid);
+
+        let orders = JSON.parse(await redis.get(sessionKey)) || undefined;
+        if (orders === undefined) {
+            return "Hiện không có session nào đang mở. Thử /start để mở session mới.";
         }
 
-        let responseMessage = "Current orders:\n";
+        if (orders.length === 0) {
+            return "Hiện không có đơn hàng nào trong session";
+        }
+
+        const userStateKey = USER_STATE_KEY.replace('SENDER_PSID', sender_psid);
+        const userState = JSON.parse(await redis.get(userStateKey));
+        const startAddress = userState?.startAddress?.address || "Chưa có thông tin";
+
+        let responseMessage = "Lộ trình hiện tại:\n";
+            responseMessage += `**Điểm khởi hành: ${startAddress}.\n`;
         orders.forEach((order, index) => {
-            responseMessage += `${index + 1}. ${order}\n`;
+            responseMessage += `${index + 1}. ${order?.address}\n`;
         });
 
         return responseMessage;
@@ -224,21 +260,39 @@ const getAllCurrentOrder = async (sessionKey) => {
         throw error;
     }
 }
-const clearAllOrderInCurrentSession = async (sessionKey) => {
-    const existingOrderSession = await redis.get(sessionKey);
-    if (existingOrderSession){
+
+const clearAllOrderInCurrentSession = async (sender_psid) => {
+    try {
+        if (!sender_psid) {
+            return "Missing sender PSID";
+        }
+        const sessionKey = ORDER_SESSION_KEY.replace("SENDER_PSID", sender_psid);
+        const existingOrderSession = await redis.get(sessionKey);
+
+        if (!existingOrderSession) {
+            return "Hiện không có session nào đang mở. Thử /start để mở session mới."
+        }
+
         await redis.set(sessionKey, JSON.stringify([]));
-        return "All orders in current session have been removed";
-    }else{
-        return "No order session is opening. Try /start to open session"
+        return "Đã xóa toàn bộ đơn hàng trong session hiện tại";
+    } catch (error) {
+        console.error("Error clearing all orders in current session", error)
+        throw error;
     }
 }
 
-const removeOrderByOrderID = async (sessionKey, orderID) => {
+const removeOrderByOrderID = async (sender_psid, orderID) => {
     try {
+        if (!sender_psid) {
+            return "Missing sender PSID";
+        }
+        if (!orderID) {
+            return "Missing order ID";
+        }
+        const sessionKey = ORDER_SESSION_KEY.replace("SENDER_PSID", sender_psid);
         let orders = JSON.parse(await redis.get(sessionKey)) || [];
         if (orders.length === 0) {
-            return "No order in current session";
+            return "Hiện không có đơn hàng nào trong session";
         }
 
         if (orderID < 1 || orderID > orders.length) {
@@ -255,14 +309,64 @@ const removeOrderByOrderID = async (sessionKey, orderID) => {
     }
 }
 
+const handleAddressMessage = async (message_content, sender_psid) => {
+    // Handle address message
+    const userStateKey = USER_STATE_KEY.replace('SENDER_PSID', sender_psid);
+    const userState = JSON.parse(await redis.get(userStateKey));
+    const systemPrompt = `You are an order processing assitant, you will check the address is valid or not. If the address is valid, you will return as json format 
+    {
+        "success": true,
+        "message": {
+            "address": string,
+            "lat": null,
+            "lng": null
+        }
+    }
+    If not, you will return this json format 
+    {
+        "success": false,
+        "message": "Địa chỉ không hợp lệ, vui lòng nhập lại"
+    }`;
+
+    const userPrompt = message_content;
+    const response = await openai.chat.completions.create({
+        model: modelName,
+        messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userPrompt }
+        ],
+        temperature: 0.7,
+        response_format: { type: "json_object" }
+    })
+    const jsonResponse = JSON.parse(response.choices[0].message.content);
+    if (jsonResponse['success']) {
+        let clonedUserState = { ...userState };
+        const {lat, lng} = await mapService.getLatLngFromAddress(message_content);
+        const startAddress = {
+            address: message_content,
+            lat,
+            lng
+        }
+        clonedUserState.action = clonedUserState.action.filter(action => action !== 'awaiting_start_address_input');
+        clonedUserState = {
+            ...clonedUserState,
+            startAddress
+        }
+
+        // Save address to Redis
+        await redis.set(userStateKey, JSON.stringify(clonedUserState));
+        return "Lưu điểm khởi hành thành công, vui lòng tiếp tục thêm các điểm dừng";
+    }
+    return jsonResponse.message;
+
+}
+
+const handleShowAbout = async () => {
+    return `Đây là một chatbot AI giúp người dùng quản lý và tối ưu hóa các tác vụ xử lý đơn hàng của họ. Bot có thể hỗ trợ tối ưu hóa tuyến đường, trích xuất đơn hàng và các yêu cầu chung.`
+}
+
 module.exports = {
-    startOrderSession,
-    finishOrderSession,
-    handleNormalMessage, 
+    handleNormalMessage,
     handleCommandMessage,
-    handleHelpCommand,
-    handleCancelCurrentOrderSession,
-    getAllCurrentOrder,
-    clearAllOrderInCurrentSession,
-    removeOrderByOrderID
+    handleAddressMessage
 }

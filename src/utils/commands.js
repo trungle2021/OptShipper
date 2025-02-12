@@ -1,7 +1,7 @@
 const COMMANDS = {
     START: '/start',
     END: '/end',
-    HELP: '/help',
+    SYNTAX: '/syntax',
     ABOUT: '/about',
     GET_SENDER_PSID: '/sender-psid',
     CANCEL: "/cancel",

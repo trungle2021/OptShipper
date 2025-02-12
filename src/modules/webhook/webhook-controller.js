@@ -4,7 +4,8 @@ const redis = require('../../utils/redis/redis');
 const ORDER_SESSION_KEY = process.env.ORDER_SESSION_KEY;
 
 const handleWebhookEvent = async (req, res) => {
-      // Parse the request body from the POST
+     try{
+         // Parse the request body from the POST
       let body = req.body;
 
       // Check the webhook event is from a Page subscription
@@ -28,7 +29,7 @@ const handleWebhookEvent = async (req, res) => {
               if (webhook_event.message) {
                     messageController.handleMessage(sender_psid, webhook_event.message);
               } else if (webhook_event.postback) {
-                  postBackController.handlePostback(sender_psid, webhook_event.postback);
+                  postBackController.handlePostBackMessage(sender_psid, webhook_event.postback);
               }
   
           });
@@ -36,6 +37,9 @@ const handleWebhookEvent = async (req, res) => {
       } else {
           res.sendStatus(404);
       }
+     }catch(error){
+         console.log("Error in handleWebhookEvent: ", error);
+     }
 }
 
 module.exports = {
