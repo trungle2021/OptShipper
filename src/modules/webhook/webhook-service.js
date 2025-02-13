@@ -7,12 +7,13 @@ const callSendAPI = async (sender_psid, response) => {
       "recipient": {
         "id": sender_psid
       },
+      "messaging_type": "RESPONSE",
       "message": response
     }
   
     // Send the HTTP request to the Messenger Platform
     request({
-      "uri": "https://graph.facebook.com/v2.6/me/messages",
+      "uri": "https://graph.facebook.com/v22.0/me/messages",
       "qs": { "access_token": process.env.PAGE_ACCESS_TOKEN },
       "method": "POST",
       "json": request_body
@@ -25,6 +26,22 @@ const callSendAPI = async (sender_psid, response) => {
     }); 
 }
 
+const sendPostbackMessage = async (sender_psid, postBackText, postBackArray) => {
+    const response = {
+        "attachment": {
+            "type": "template",
+            "payload": {
+                "template_type": "button",
+                "text": postBackText,
+                "buttons": postBackArray
+            }
+        }
+    };
+
+    await callSendAPI(sender_psid, response);
+}
+
 module.exports = {
-    callSendAPI
+    callSendAPI,
+    sendPostbackMessage
 }

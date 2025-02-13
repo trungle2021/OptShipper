@@ -13,11 +13,14 @@
     "express": "^4.21.2",
     "googleapis": "^144.0.0",
     "helmet": "^8.0.0",
+    "ioredis": "^5.5.0",
     "morgan": "^1.10.0",
     "openai": "^4.80.1",
     "path": "^0.12.7",
+    "redis": "^4.7.0",
     "request": "^2.88.2",
     "rotating-file-stream": "^3.2.5",
+    "uuid": "^11.0.5",
     "winston": "^3.17.0"
   },
   "devDependencies": {
