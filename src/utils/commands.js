@@ -1,6 +1,6 @@
 const COMMANDS = {
     START: '/start',
-    END: '/end',
+    GO: '/go',
     SYNTAX: '/syntax',
     ABOUT: '/about',
     GET_SENDER_PSID: '/sender-psid',

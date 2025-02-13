@@ -5,6 +5,8 @@ const mapService = require('../map/map-service')
 const webhookService = require('../webhook/webhook-service')
 const ORDER_SESSION_KEY = process.env.ORDER_SESSION_KEY;
 const USER_STATE_KEY = process.env.USER_STATE_KEY;
+const { v4: uuidv4 } = require('uuid');
+
 
 const handleNormalMessage = async (message_content, sender_psid) => {
     try {
@@ -85,7 +87,7 @@ const handleCommandMessage = async (message_content, sender_psid) => {
     switch (message_content) {
         case COMMANDS.START:
             return startOrderSession(sender_psid);
-        case COMMANDS.END:
+        case COMMANDS.GO:
             return finishOrderSession(sender_psid);
         case COMMANDS.SYNTAX:
             return handleSyntaxCommand();
@@ -112,8 +114,10 @@ const handleOrderMessage = async (sender_psid, received_message) => {
         const sessionKey = ORDER_SESSION_KEY.replace("SENDER_PSID", sender_psid);
         // Get orders array from parent function
         let orders = JSON.parse(await redis.get(sessionKey)) || [];
+        
         const { lat, lng } = await mapService.getLatLngFromAddress(received_message.delivery_address);
         const order = {
+            order_id: uuidv4(),
             address: received_message.delivery_address,
             lat,
             lng
@@ -185,9 +189,7 @@ const finishOrderSession = async (sender_psid) => {
             "text": `Hoàn thành session giao hàng. Đang tối ưu lộ trình cho ${orders.length} đơn hàng.`
         })
 
-        // const mapLink = await mapService.generateMapLink(orders);
-        let mapLink = "https://www.google.com/maps";
-
+        let mapLink = await mapService.generateMapLink(sender_psid, orders);
         return "Sau đây là lộ trình tối ưu cho đơn hàng của bạn: " + mapLink;
     } else {
         return "Hiện tại đang không có session nào. Thử /start để mở session mới."
@@ -343,6 +345,7 @@ const handleAddressMessage = async (message_content, sender_psid) => {
         let clonedUserState = { ...userState };
         const {lat, lng} = await mapService.getLatLngFromAddress(message_content);
         const startAddress = {
+            order_id: uuidv4(),
             address: message_content,
             lat,
             lng
